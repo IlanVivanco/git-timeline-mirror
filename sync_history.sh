@@ -59,16 +59,7 @@ DEST_REPO_URL="${DEST_REPO_URL:-}" # URL of the mirrored destination repository
 IFS=',' read -r -a GIT_EMAILS <<<"$(echo "$GIT_EMAILS" | tr -d ' ')"
 
 # --------------------------------------------------
-# 3 · Verify clean working tree (skip for plain dry‑run)
-# --------------------------------------------------
-if ! $DRY_RUN && { ! git diff --quiet || ! git diff --cached --quiet; }; then
-  echo "❌ Uncommitted changes detected. Commit or stash before running." >&2
-  exit 1
-fi
-CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD || echo main)"
-
-# --------------------------------------------------
-# 4 · Collect repo paths
+# 3 · Collect repo paths
 # --------------------------------------------------
 [[ -f "$REPOS_FILE" ]] || {
   echo "❌ $REPOS_FILE not found" >&2
@@ -102,15 +93,19 @@ if $DRY_RUN; then
 fi
 
 # --------------------------------------------------
-# 5 · Prepare last_sync (only when not plain dry‑run)
+# 4 · Prepare last_sync (only when not plain dry‑run)
 # --------------------------------------------------
 LAST_SYNC=0
-if ! $DRY_RUN; then
-  [[ -f .last_sync ]] && LAST_SYNC=$(cat .last_sync)
+if ! $DRY_RUN && ! $FORCE; then
+  if [[ -f .last_sync ]]; then
+    LAST_SYNC=$(cat .last_sync)
+    # Add 1 second offset to avoid including the exact same timestamp
+    LAST_SYNC=$((LAST_SYNC + 1))
+  fi
 fi
 
 # --------------------------------------------------
-# 6 · Harvest commits
+# 5 · Harvest commits
 # --------------------------------------------------
 TMPFILE="$(mktemp)"
 
@@ -146,6 +141,7 @@ for R in "${REPOS[@]}"; do
   # Update the git log command to filter by multiple emails
   if [[ "$LAST_SYNC" -gt 0 ]]; then
     for EMAIL in "${GIT_EMAILS[@]}"; do
+      echo "🔍 Harvesting commits for $EMAIL in $R since $(date -d "@$LAST_SYNC" +"%F %T")"
       git -C "$R" log --reverse --pretty='%at%x09%s' --author="$EMAIL" --since="@$LAST_SYNC" |
         while IFS=$'\t' read -r TS MSG; do
           [[ -z "$TS" ]] && continue
@@ -157,6 +153,7 @@ for R in "${REPOS[@]}"; do
         done
     done
   else
+    echo "🔍 Harvesting all commits for ${GIT_EMAILS[*]} in $R"
     for EMAIL in "${GIT_EMAILS[@]}"; do
       git -C "$R" log --reverse --pretty='%at%x09%s' --author="$EMAIL" |
         while IFS=$'\t' read -r TS MSG; do
@@ -172,6 +169,7 @@ for R in "${REPOS[@]}"; do
 done
 
 TOTAL=$(wc -l <"$TMPFILE")
+echo $(cat "$TMPFILE" | awk -F '\t' '{printf "  %s  %s\n", strftime("%F %T", $1), $2}')
 
 if [[ "$TOTAL" -eq 0 ]]; then
   echo "✅ No new commits to import"
@@ -181,7 +179,7 @@ fi
 sort -n "$TMPFILE" -o "$TMPFILE"
 
 # --------------------------------------------------
-# 7 · Dry‑run summary
+# 6 · Dry‑run summary
 # --------------------------------------------------
 if $DRY_RUN; then
   echo "ℹ️  Dry run: inspected ${REPOS[*]} repo would import $TOTAL commits into the mirrored repository"
@@ -197,15 +195,26 @@ if $DRY_RUN; then
 fi
 
 # --------------------------------------------------
-# 8 · Replay commits directly in the destination repository
+# 7 · Replay commits directly in the destination repository
 # --------------------------------------------------
 # Clone or initialize the destination repository
 if [[ -n "$DEST_REPO_URL" ]]; then
-  if [[ ! -d "destination-repo" ]]; then
+  if [[ ! -d "mirrored-timeline" ]]; then
     echo "ℹ️  Cloning destination repository"
-    git clone "$DEST_REPO_URL" destination-repo
+    git clone "$DEST_REPO_URL" mirrored-timeline
   fi
-  cd destination-repo
+  cd mirrored-timeline
+
+  # Handle FORCE flag to override git history
+  if $FORCE; then
+    echo "⚠️  --force: rebuilding git history from scratch"
+    git checkout --orphan temp-branch
+    git rm -rf . >/dev/null 2>&1 || true
+    git commit --allow-empty -m "Initialize fresh timeline" >/dev/null
+    git branch -D main >/dev/null 2>&1 || true
+    git branch -m main
+    git push --force-with-lease origin main >/dev/null 2>&1 || true
+  fi
 else
   echo "❌ DEST_REPO_URL is not set in .env" >&2
   exit 1
@@ -222,9 +231,8 @@ done <"$TMPFILE"
 # Update .last_sync after replaying commits
 if [[ "$TOTAL" -gt 0 ]]; then
   echo "$NEWEST_TS" >../.last_sync
-  git add .
-  git commit -m "Replay synthetic commits" >/dev/null
-  git push origin main
+  # Push commits to remote
+  git push origin main >/dev/null 2>&1 || true
 fi
 
 # Return to the git-timeline-mirror repository
