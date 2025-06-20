@@ -76,7 +76,7 @@ if ! $DRY_RUN; then
   else
     echo "ℹ️  Creating orphan $DEST_BRANCH branch"
     git switch --orphan "$DEST_BRANCH"
-    git rm -rf . >/dev/null 2>&1 || true
+    git rm -rf --cached . >/dev/null 2>&1 || true
     GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit -m "Init timeline branch" >/dev/null
     git switch "$CURRENT_BRANCH"
   fi
