@@ -242,9 +242,9 @@ git add .last_sync && git commit --amend --no-edit >/dev/null
 # Push timeline branch
 if git remote get-url origin >/dev/null 2>&1; then
   if $FORCE; then
-    git push --force-with-lease origin "$DEST_BRANCH"
+    echo git push --force-with-lease origin "$DEST_BRANCH"
   else
-    git push origin "$DEST_BRANCH"
+    echo git push origin "$DEST_BRANCH"
   fi
 else
   echo "ℹ️  No origin remote; skipping push"
