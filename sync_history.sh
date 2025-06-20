@@ -53,7 +53,7 @@ ME_EMAIL="${ME_EMAIL:-$(git config user.email || echo "you@example.com")}"
 GIT_EMAILS="${GIT_EMAILS:-$(git config user.email || echo "you@example.com")}"
 REPOS_FILE="${REPOS_FILE:-repos.txt}"
 FILTER_SCRIPT="${FILTER_SCRIPT:-./filter_message.sh}"
-DEST_BRANCH="${DEST_BRANCH:-timeline}"
+DEST_REPO_URL="${DEST_REPO_URL:-}" # URL of the mirrored destination repository
 
 # Allow $GIT_EMAILS to be a comma-separated list of emails and trim spaces
 IFS=',' read -r -a GIT_EMAILS <<<"$(echo "$GIT_EMAILS" | tr -d ' ')"
@@ -68,22 +68,7 @@ fi
 CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD || echo main)"
 
 # --------------------------------------------------
-# 4 · Ensure destination branch exists (skip for plain dry‑run)
-# --------------------------------------------------
-if ! $DRY_RUN; then
-  if git show-ref --quiet "refs/heads/$DEST_BRANCH"; then
-    : # exists
-  else
-    echo "ℹ️  Creating orphan $DEST_BRANCH branch"
-    git switch --orphan "$DEST_BRANCH"
-    git rm -rf --cached . >/dev/null 2>&1 || true
-    GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit -m "Init timeline branch" >/dev/null
-    git switch "$CURRENT_BRANCH"
-  fi
-fi
-
-# --------------------------------------------------
-# 5 · Collect repo paths
+# 4 · Collect repo paths
 # --------------------------------------------------
 [[ -f "$REPOS_FILE" ]] || {
   echo "❌ $REPOS_FILE not found" >&2
@@ -117,16 +102,15 @@ if $DRY_RUN; then
 fi
 
 # --------------------------------------------------
-# 6 · Prepare last_sync (only when not plain dry‑run)
+# 5 · Prepare last_sync (only when not plain dry‑run)
 # --------------------------------------------------
 LAST_SYNC=0
 if ! $DRY_RUN; then
-  git switch --quiet "$CURRENT_BRANCH"
   [[ -f .last_sync ]] && LAST_SYNC=$(cat .last_sync)
 fi
 
 # --------------------------------------------------
-# 7 · Harvest commits
+# 6 · Harvest commits
 # --------------------------------------------------
 TMPFILE="$(mktemp)"
 
@@ -197,10 +181,10 @@ fi
 sort -n "$TMPFILE" -o "$TMPFILE"
 
 # --------------------------------------------------
-# 8 · Dry‑run summary
+# 7 · Dry‑run summary
 # --------------------------------------------------
 if $DRY_RUN; then
-  echo "ℹ️  Dry run: inspected ${REPOS[*]} repo would import $TOTAL commits into $DEST_BRANCH"
+  echo "ℹ️  Dry run: inspected ${REPOS[*]} repo would import $TOTAL commits into the mirrored repository"
   if [[ "$TOTAL" -gt 6 ]]; then
     head -n 3 "$TMPFILE" | awk -F '\t' '{printf "  %s  %s\n", strftime("%F %T", $1), $2}'
     echo "  ..."
@@ -213,28 +197,21 @@ if $DRY_RUN; then
 fi
 
 # --------------------------------------------------
-# 9 · Optionally rebuild branch
+# 8 · Replay commits directly in the destination repository
 # --------------------------------------------------
-# Ensure the timeline branch is isolated
-if $FORCE || ! git show-ref --quiet "refs/heads/$DEST_BRANCH"; then
-  echo "⚠️  Recreating $DEST_BRANCH branch"
-  git branch -D "$DEST_BRANCH" 2>/dev/null || true
-  git switch --orphan "$DEST_BRANCH"
-  git rm -rf . >/dev/null 2>&1 || true
-  echo "*" >.gitignore
-  echo "!README_TIMELINE.md" >>.gitignore
-  git add .gitignore
-  GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit -m "Init timeline branch with isolation" >/dev/null
+# Clone or initialize the destination repository
+if [[ -n "$DEST_REPO_URL" ]]; then
+  if [[ ! -d "destination-repo" ]]; then
+    echo "ℹ️  Cloning destination repository"
+    git clone "$DEST_REPO_URL" destination-repo
+  fi
+  cd destination-repo
 else
-  git switch --quiet "$DEST_BRANCH"
+  echo "❌ DEST_REPO_URL is not set in .env" >&2
+  exit 1
 fi
 
-# Clear workspace when switching to timeline branch
-git rm -rf . >/dev/null 2>&1 || true
-
-# --------------------------------------------------
-# 10 · Replay commits
-# --------------------------------------------------
+# Replay commits directly in the destination repository
 while IFS=$'\t' read -r TS MSG; do
   GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" GIT_AUTHOR_DATE="@$TS" \
     GIT_COMMITTER_NAME="$ME_NAME" GIT_COMMITTER_EMAIL="$ME_EMAIL" GIT_COMMITTER_DATE="@$TS" \
@@ -244,27 +221,15 @@ done <"$TMPFILE"
 
 # Update .last_sync after replaying commits
 if [[ "$TOTAL" -gt 0 ]]; then
-  echo "$NEWEST_TS" >.last_sync
-  git add .last_sync
-  git commit -m "Update .last_sync" >/dev/null
+  echo "$NEWEST_TS" >../.last_sync
+  git add .
+  git commit -m "Replay synthetic commits" >/dev/null
+  git push origin main
 fi
 
-# Push timeline branch
-if git remote get-url origin >/dev/null 2>&1; then
-  if $FORCE; then
-    echo git push --force-with-lease origin "$DEST_BRANCH"
-  else
-    echo git push origin "$DEST_BRANCH"
-  fi
-else
-  echo "ℹ️  No origin remote; skipping push"
-fi
-
-# Ensure return to main branch
-if ! $DRY_RUN; then
-  git switch --quiet "$CURRENT_BRANCH"
-fi
+# Return to the git-timeline-mirror repository
+cd ..
 
 rm "$TMPFILE"
 
-echo "✅ Imported $TOTAL commits into $DEST_BRANCH (latest $(date -d "@$NEWEST_TS" +"%F %T"))"
+echo "✅ Imported $TOTAL commits into the mirrored repository (latest $(date -d "@$NEWEST_TS" +"%F %T"))"
