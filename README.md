@@ -197,7 +197,7 @@ Make it executable (`chmod +x filter_message.sh`) and get creative! The script p
 
 **Performance with large repos**: The script scans entire git history on first run. Subsequent runs are much faster thanks to incremental sync. For truly massive repos, consider using `--dry-run=<specific-repo>` to test individual repos first.
 
-**GitHub profile not showing private contributions**: If you want GitHub to show your private repo contributions on your profile (visible only to you), go to [GitHub Settings → Profile](https://github.com/settings/profile) and check "Include private contributions on my profile." Note that this doesn't make the contributions visible to others—that's where this tool shines.
+**GitHub profile not showing private contributions**: If you want GitHub to show your private repo contributions on your profile (visible only to you), go to [GitHub  Profile Settings](https://github.com/settings/profile#contributions-activity-heading) and check "Include private contributions on my profile." Note that this doesn't make the contributions visible to others—that's where this tool shines.
 
 ---
 
