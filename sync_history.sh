@@ -216,16 +216,22 @@ fi
 # --------------------------------------------------
 # 9 · Optionally rebuild branch
 # --------------------------------------------------
-# Ensure the timeline branch exists and is valid
+# Ensure the timeline branch is isolated
 if $FORCE || ! git show-ref --quiet "refs/heads/$DEST_BRANCH"; then
   echo "⚠️  Recreating $DEST_BRANCH branch"
   git branch -D "$DEST_BRANCH" 2>/dev/null || true
   git switch --orphan "$DEST_BRANCH"
   git rm -rf . >/dev/null 2>&1 || true
-  GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit --allow-empty -m "Init timeline branch" >/dev/null
+  echo "*" >.gitignore
+  echo "!README_TIMELINE.md" >>.gitignore
+  git add .gitignore
+  GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit -m "Init timeline branch with isolation" >/dev/null
 else
   git switch --quiet "$DEST_BRANCH"
 fi
+
+# Clear workspace when switching to timeline branch
+git rm -rf . >/dev/null 2>&1 || true
 
 # --------------------------------------------------
 # 10 · Replay commits
