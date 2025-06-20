@@ -1,3 +1,4 @@
 .env
 .last_sync
 mirrored-timeline
+log*
