@@ -121,9 +121,8 @@ fi
 # --------------------------------------------------
 LAST_SYNC=0
 if ! $DRY_RUN; then
-  git switch --quiet "$DEST_BRANCH"
-  [[ -f .last_sync ]] && LAST_SYNC=$(cat .last_sync)
   git switch --quiet "$CURRENT_BRANCH"
+  [[ -f .last_sync ]] && LAST_SYNC=$(cat .last_sync)
 fi
 
 # --------------------------------------------------
@@ -243,14 +242,12 @@ while IFS=$'\t' read -r TS MSG; do
   NEWEST_TS="$TS"
 done <"$TMPFILE"
 
-# Handle empty commit replay
-if [[ "$TOTAL" -eq 0 ]]; then
-  echo "✅ No new commits to import, ensuring branch has a valid commit"
-  GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit --allow-empty -m "No new commits" >/dev/null
+# Update .last_sync after replaying commits
+if [[ "$TOTAL" -gt 0 ]]; then
+  echo "$NEWEST_TS" >.last_sync
+  git add .last_sync
+  git commit -m "Update .last_sync" >/dev/null
 fi
-
-echo "$NEWEST_TS" >.last_sync
-git add .last_sync && git commit --amend --no-edit >/dev/null
 
 # Push timeline branch
 if git remote get-url origin >/dev/null 2>&1; then
@@ -263,8 +260,11 @@ else
   echo "ℹ️  No origin remote; skipping push"
 fi
 
-# Return to original branch
-git switch --quiet "$CURRENT_BRANCH"
+# Ensure return to main branch
+if ! $DRY_RUN; then
+  git switch --quiet "$CURRENT_BRANCH"
+fi
+
 rm "$TMPFILE"
 
 echo "✅ Imported $TOTAL commits into $DEST_BRANCH (latest $(date -d "@$NEWEST_TS" +"%F %T"))"
