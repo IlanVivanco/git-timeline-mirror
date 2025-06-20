@@ -216,12 +216,13 @@ fi
 # --------------------------------------------------
 # 9 · Optionally rebuild branch
 # --------------------------------------------------
-if $FORCE; then
-  echo "⚠️  --force: deleting and recreating $DEST_BRANCH"
+# Ensure the timeline branch exists and is valid
+if $FORCE || ! git show-ref --quiet "refs/heads/$DEST_BRANCH"; then
+  echo "⚠️  Recreating $DEST_BRANCH branch"
   git branch -D "$DEST_BRANCH" 2>/dev/null || true
   git switch --orphan "$DEST_BRANCH"
   git rm -rf . >/dev/null 2>&1 || true
-  GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit -m "Init timeline branch" >/dev/null
+  GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit --allow-empty -m "Init timeline branch" >/dev/null
 else
   git switch --quiet "$DEST_BRANCH"
 fi
@@ -235,6 +236,12 @@ while IFS=$'\t' read -r TS MSG; do
     git commit --allow-empty -m "$MSG" >/dev/null
   NEWEST_TS="$TS"
 done <"$TMPFILE"
+
+# Handle empty commit replay
+if [[ "$TOTAL" -eq 0 ]]; then
+  echo "✅ No new commits to import, ensuring branch has a valid commit"
+  GIT_AUTHOR_NAME="$ME_NAME" GIT_AUTHOR_EMAIL="$ME_EMAIL" git commit --allow-empty -m "No new commits" >/dev/null
+fi
 
 echo "$NEWEST_TS" >.last_sync
 git add .last_sync && git commit --amend --no-edit >/dev/null
