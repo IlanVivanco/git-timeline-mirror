@@ -62,8 +62,8 @@ The architecture is beautifully simple: this repo holds the tooling, while your 
 
 ```env
 # Identity (must match commits you push at work)
-ME_NAME="Your Name"            # Used for commit authorship
-ME_EMAIL="you@example.com"     # Used for commit authorship
+ME_NAME="Your Name"        # Used for commit authorship
+ME_EMAIL="you@example.com" # Used for commit authorship
 
 # All emails to scan for in repos
 # Multi-email support (newline-separated)
@@ -202,3 +202,7 @@ Make it executable (`chmod +x filter_message.sh`) and get creative! The script p
 ---
 
 Happy timeline building! Pull requests welcome (the irony is not lost on us).
+
+![All Done](https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExZGxtM3JlbjdxOHh1MjExYW11MjJwMmh4bjJmMnk1aTBudGJiZ25kMyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/26u4lOMA8JKSnL9Uk/giphy.gif)
+
+
